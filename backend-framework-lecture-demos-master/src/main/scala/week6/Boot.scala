@@ -26,7 +26,7 @@ object Boot extends App with SprayJsonSerializer {
 
 
 
-  val route =
+    val route =
     path("healthcheck") {
       get {
         complete {
@@ -37,23 +37,43 @@ object Boot extends App with SprayJsonSerializer {
     pathPrefix("kbtu-cinema") {
       path("movie" / Segment) { movieId =>
         get {
-          complete {
-            (movieManager ? MovieManager.ReadMovie(movieId)).mapTo[Either[ErrorResponse, Movie]]
-          }
+            val output: Future[Either[ErrorResponse, Movie]] = (movieManager ? MovieManager.ReadMovie(movieId)).mapTo[Either[ErrorResponse, Movie]]
+            onSuccess(output){
+              case Left(error) => complete(error.status, error)
+              case right(movie) => complete(200, movie)
+            }
         }
+            delete{
+              val output: Future[Either[ErrorCodeResponse, SuccessfulResponse]] = (movieManager ? MovieManager.DeleteMovie(movieId.)).mapTo[Either[ErrorResponse, SuccessfulResponse]]
+              handle(output)
+            }
       } ~
       path("movie") {
         post {
           entity(as[Movie]) { movie =>
-            complete {
-              (movieManager ? MovieManager.CreateMovie(movie)).mapTo[Either[ErrorResponse, SuccessfulResponse]]
-            }
+              val output: Future[Either[ErrorResponse, SuccessfulResponse]] = (movieManager ? MovieManager.CreateMovie(movie)).mapTo[Either[ErrorResponse, SuccessfulResponse]]
+              handle(output)
           }
         }
+          put{
+            entity(as[Movie]) {  movie=>
+              val output: Future[Either[ErrorResponse, SuccessfulResponse]] = (movieManager ? MovieManager.UpdateMovie(movie)).mapTo[Either[ErrorResponse, SuccessulResponse]]
+              handle(output)
+            }
+          }
       }
     }
 
   val bindingFuture = Http().bindAndHandle(route, "0.0.0.0", 8080)
+
+  def handle(output:Future[Either[ErrorResponse, SuccessfulResponse]]) = {
+    onSuccess(output) {
+      case left(error) => complete(error.status, error)
+      case right(successful) => complete(successful.status, successful)
+    }
+  }
+
+
 
 
 
